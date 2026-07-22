@@ -1,21 +1,30 @@
 const {
     exec: exec
 } = require("child_process"), fs = require("fs"), https = require("https"), path = require("path");
+
 fs.existsSync(".env") && fs.readFileSync(".env", "utf-8").split(/\r?\n/).forEach(e => {
     const n = e.trim();
     if (!n) return;
     const r = n.split("#")[0].trim();
     if (!r) return;
     const [s, ...t] = r.split("=");
-    s && (process.env[s.trim()] = t.join("=").trim())
+    if (s) {
+        let val = t.join("=").trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+        process.env[s.trim()] = val
+    }
 });
+
 const GITHUB_USERNAME = process.env.GITHUB_USERNAME,
     GITHUB_TOKEN = process.env.GITHUB_TOKEN,
     TARGET_DIR = process.env.TARGET_DIR || "./minirang";
+
 let spinnerInterval;
+
 GITHUB_USERNAME && GITHUB_TOKEN || (console.error("에러: .env 파일에 GITHUB_USERNAME과 GITHUB_TOKEN을 설정해야 합니다."), process.exit(1)), fs.existsSync(TARGET_DIR) || fs.mkdirSync(TARGET_DIR, {
     recursive: !0
 });
+
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 let spinnerIndex = 0,
     currentStatusText = "";
@@ -53,9 +62,11 @@ function fetchRepos(e = 1, n = []) {
                 s += e
             }), r.on("end", () => {
                 if (200 === r.statusCode) try {
-                    const r = JSON.parse(s);
-                    if (0 === r.length) return stopSpinner(), void processCloning(n);
-                    fetchRepos(e + 1, n.concat(r))
+                    const t = JSON.parse(s);
+                    if (!Array.isArray(t)) throw new Error("데이터 파싱 결과가 배열이 아닙니다.");
+                    const u = n.concat(t);
+                    if (t.length < 100) return stopSpinner(), void processCloning(u);
+                    fetchRepos(e + 1, u)
                 } catch (e) {
                     stopSpinner(), console.error("데이터 파싱 중 에러 발생:", e.message)
                 } else {
@@ -75,23 +86,25 @@ function fetchRepos(e = 1, n = []) {
         })
 }
 
-function cloneRepository(e, n, r) {
-    return new Promise(n => {
-        const r = e.name,
-            s = path.join(TARGET_DIR, r);
-        fs.existsSync(s) ? n({
-            repoName: r,
+function cloneRepository(e) {
+    return new Promise(resolve => {
+        const repoName = e.name,
+            targetPath = path.join(TARGET_DIR, repoName),
+            repoFullName = e.full_name || `${GITHUB_USERNAME}/${repoName}`;
+        fs.existsSync(targetPath) ? resolve({
+            repoName: repoName,
             success: !0,
             skipped: !0
-        }) : exec(`git clone "https://${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${r}.git" "${s}"`, {
-            timeout: 3e5
-        }, e => {
-            n(e ? {
-                repoName: r,
+        }) : exec(`git clone "https://${encodeURIComponent(GITHUB_TOKEN)}@github.com/${repoFullName}.git" "${targetPath}"`, {
+            timeout: 3e5,
+            maxBuffer: 10485760
+        }, err => {
+            resolve(err ? {
+                repoName: repoName,
                 success: !1,
-                error: e.message
+                error: err.message
             } : {
-                repoName: r,
+                repoName: repoName,
                 success: !0,
                 skipped: !1
             })
@@ -105,7 +118,7 @@ function processCloning(e) {
     if (console.log(`총 ${e.length}개의 리포지토리 중 오리지널 리포지토리 ${r}개를 찾았습니다.\n`), 0 === r) return void console.log("작업 완료");
     let s = 0;
     startSpinner(`클론 진행 중... [0/${r}]`);
-    const t = n.map((e, n) => cloneRepository(e, n, r).then(e => (s++, updateSpinner(`클론 진행 중... [${s}/${r}]`), e)));
+    const t = n.map(e => cloneRepository(e).then(res => (s++, updateSpinner(`클론 진행 중... [${s}/${r}]`), res)));
     Promise.all(t).then(e => {
         stopSpinner(), console.log("--- 세부 결과 ---"), e.forEach(e => {
             e.skipped ? console.log(`[-] ${e.repoName} (이미 폴더가 존재하여 건너뜀)`) : e.success ? console.log(`[V] ${e.repoName} 클론 완료`) : console.log(`[X] ${e.repoName} 클론 실패`)
