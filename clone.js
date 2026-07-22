@@ -3,9 +3,11 @@ const {
 } = require("child_process"), fs = require("fs"), https = require("https"), path = require("path");
 fs.existsSync(".env") && fs.readFileSync(".env", "utf-8").split(/\r?\n/).forEach(e => {
     const n = e.trim();
-    if (!n || n.startsWith("#")) return;
-    const [r, ...s] = n.split("=");
-    r && (process.env[r.trim()] = s.join("=").trim())
+    if (!n) return;
+    const r = n.split("#")[0].trim();
+    if (!r) return;
+    const [s, ...t] = r.split("=");
+    s && (process.env[s.trim()] = t.join("=").trim())
 });
 const GITHUB_USERNAME = process.env.GITHUB_USERNAME,
     GITHUB_TOKEN = process.env.GITHUB_TOKEN,
@@ -29,7 +31,7 @@ function updateSpinner(e) {
 }
 
 function stopSpinner() {
-    clearInterval(spinnerInterval), process.stdout.write("\r[K")
+    clearInterval(spinnerInterval), process.stdout.write("\r\x1b[K")
 }
 
 function fetchRepos(e = 1, n = []) {
