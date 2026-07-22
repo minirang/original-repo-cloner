@@ -10,7 +10,7 @@ GitHub 개인 리포지토리들을 한 번에 자동으로 병렬 클론하는 
 ```env
 GITHUB_USERNAME=본인의_깃허브_유저네임
 GITHUB_TOKEN=본인의_개인_액세스_토큰
-TARGET_DIR=./minirang
+TARGET_DIR=클론할 파일이 저장 루트
 ```
 
 ### 2. 스크립트 실행
