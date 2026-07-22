@@ -99,10 +99,14 @@ function cloneRepository(e) {
             timeout: 3e5,
             maxBuffer: 10485760
         }, err => {
+            let errMsg = err ? err.message : "";
+            if (errMsg && GITHUB_TOKEN) {
+                errMsg = errMsg.split(GITHUB_TOKEN).join("***").split(encodeURIComponent(GITHUB_TOKEN)).join("***");
+            }
             resolve(err ? {
                 repoName: repoName,
                 success: !1,
-                error: err.message
+                error: errMsg
             } : {
                 repoName: repoName,
                 success: !0,
@@ -112,19 +116,30 @@ function cloneRepository(e) {
     })
 }
 
-function processCloning(e) {
+async function processCloning(e) {
     const n = e.filter(e => !e.fork),
         r = n.length;
     if (console.log(`총 ${e.length}개의 리포지토리 중 오리지널 리포지토리 ${r}개를 찾았습니다.\n`), 0 === r) return void console.log("작업 완료");
     let s = 0;
     startSpinner(`클론 진행 중... [0/${r}]`);
-    const t = n.map(e => cloneRepository(e).then(res => (s++, updateSpinner(`클론 진행 중... [${s}/${r}]`), res)));
-    Promise.all(t).then(e => {
-        stopSpinner(), console.log("--- 세부 결과 ---"), e.forEach(e => {
-            e.skipped ? console.log(`[-] ${e.repoName} (이미 폴더가 존재하여 건너뜀)`) : e.success ? console.log(`[V] ${e.repoName} 클론 완료`) : console.log(`[X] ${e.repoName} 클론 실패`)
-        }), console.log("\n작업 완료")
-    }).catch(e => {
-        stopSpinner(), console.error("병렬 처리 중 예기치 못한 치명적 오류 발생:", e.message)
-    })
+    const results = new Array(r);
+    let index = 0;
+    const worker = async () => {
+        while (index < r) {
+            const i = index++;
+            const res = await cloneRepository(n[i]);
+            s++;
+            updateSpinner(`클론 진행 중... [${s}/${r}]`);
+            results[i] = res;
+        }
+    };
+    const workers = Array.from({ length: Math.min(5, r) }, worker);
+    await Promise.all(workers);
+    stopSpinner();
+    console.log("--- 세부 결과 ---");
+    results.forEach(e => {
+        e.skipped ? console.log(`[-] ${e.repoName} (이미 폴더가 존재하여 건너뜀)`) : e.success ? console.log(`[V] ${e.repoName} 클론 완료`) : console.log(`[X] ${e.repoName} 클론 실패`)
+    });
+    console.log("\n작업 완료")
 }
 fetchRepos();
